@@ -1,0 +1,66 @@
+﻿@page "/game/setup/pack"
+@page "/game/setup/pack/{PackId:int}"
+
+@using Microsoft.AspNetCore.Authorization
+
+@inject PackRepo Repo
+@inject NavigationManager NavigationManager
+
+@attribute [Authorize(Roles = "editor, admin")]
+
+<PageTitle>Pack</PageTitle>
+<MudContainer MaxWidth="MaxWidth.Small" Gutters="false" Class="ml-0">
+    <MudText Typo="Typo.h3" GutterBottom>@(IsCreate ? "Create" : "Edit") Pack</MudText>
+
+    @if (_pack == null && !IsCreate)
+    {
+        <MudText><em>Loading...</em></MudText>
+    }
+    else
+    {
+        <PackEdit Pack="_pack" PackId="PackId" />
+    }
+
+
+    @if (_pack != null && !IsCreate)
+    {
+        <CascadingValue Value="_pack">
+            <TagsEdit />
+            <NodeLinksEdit />
+            <IndirectLinksEdit />
+            <PackPresetEdit />
+            <NodesEdit />
+        </CascadingValue>
+    }
+</MudContainer>
+
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationState { get; set; }
+
+    [CascadingParameter(Name = "UserId")]
+    public string UserId { get; set; } = default!;
+
+    [Parameter]
+    public int? PackId { get; set; }
+
+    private Pack? _pack;
+
+    private bool IsCreate => PackId == null;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (PackId != null && _pack?.Id != PackId)
+        {
+            _pack = await Repo.GetPackExclNodes(PackId.Value);
+        }
+
+        var user = (await (AuthenticationState ?? Task.FromResult<AuthenticationState>(null!)))?.User;
+
+        if (PackId != null && (_pack == null || !(UserId == _pack.CreatedByUserId || user?.IsInRole("admin") == true || user?.IsInRole("editor") == true)))
+        {
+            NavigationManager.NavigateTo("game/setup/pack");
+        }
+    }
+}

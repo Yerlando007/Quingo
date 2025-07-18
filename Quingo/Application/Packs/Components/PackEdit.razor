@@ -1,0 +1,134 @@
+﻿@inject PackRepo Repo
+@inject NavigationManager NavigationManager
+@inject FileStoreService Files
+
+<MudText Typo="Typo.h4" GutterBottom>
+    Pack Info
+    @if (!_isEdit)
+    {
+        <MudTooltip Text="Edit Pack info">
+            <MudIconButton Icon="@Icons.Material.Filled.Edit" OnClick="() => _isEdit = true"></MudIconButton>
+        </MudTooltip>
+    }
+</MudText>
+
+@if (_isEdit)
+{
+    <MudGrid>
+        <MudItem xs="12">
+            <MudCard>
+                <MudCardContent>
+                    <MudForm @ref="@_form">
+                        <MudTextField Label="Pack Name" @bind-Value="_model.Name" Required/>
+                        <MudTextField Label="Description" @bind-Value="_model.Description"/>
+                        <MudCheckBox @bind-Value="_model.IsPublished" Label="Publish"/>
+                        <ImageUpload @ref="_upload"/>
+                    </MudForm>
+                </MudCardContent>
+                <MudCardActions>
+                    <div class="ml-auto">
+                        <MudButton Color="Color.Primary" OnClick="Save" StartIcon="@Icons.Material.Filled.Save">Save
+                        </MudButton>
+                        @if (!IsCreate)
+                        {
+                            <MudButton Color="Color.Secondary" OnClick="CancelEdit"
+                                       StartIcon="@Icons.Material.Filled.Cancel">Cancel
+                            </MudButton>
+                        }
+                    </div>
+                </MudCardActions>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+}
+else
+{
+    <MudGrid>
+        <MudItem xs="12">
+            <table class="dl-table">
+                <tr>
+                    <th>Pack Name</th>
+                    <td>@(!string.IsNullOrEmpty(Pack?.Name) ? Pack.Name : "-")</td>
+                </tr>
+                <tr>
+                    <th>Description</th>
+                    <td>@(!string.IsNullOrEmpty(Pack?.Description) ? Pack.Description : "-")</td>
+                </tr>
+                <tr>
+                    <th>Published</th>
+                    <td>@(Pack?.IsPublished == true ? "Yes" : "No")</td>
+                </tr>
+            </table>
+            @if (!string.IsNullOrEmpty(Pack?.ImageUrl))
+            {
+                <MudImage ObjectFit="ObjectFit.ScaleDown" Src="@Files.GetFileUrl(Pack.ImageUrl)" Class="rounded-lg"
+                          Height="200"/>
+            }
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    [Parameter] public int? PackId { get; set; }
+
+    [Parameter] public Pack? Pack { get; set; }
+
+    private bool _isEdit;
+
+    private bool IsCreate => PackId == null;
+
+    private MudForm _form = default!;
+
+    private PackModel _model = default!;
+
+    private ImageUpload _upload = default!;
+
+    protected override void OnInitialized()
+    {
+        _model = new PackModel(Pack);
+        _isEdit = IsCreate;
+    }
+
+    private async Task Save()
+    {
+        await _form.Validate();
+        if (!_form.IsValid) return;
+
+        await using var context = await Repo.CreateDbContext();
+
+        var pack = Pack = PackId != null
+            ? await context.Packs.FirstAsync(x => x.Id == PackId)
+            : new Pack();
+        pack.Name = _model.Name;
+        pack.Description = _model.Description;
+        pack.IsPublished = _model.IsPublished;
+
+        await UploadImage(pack);
+
+        context.Update(pack);
+        await context.SaveChangesAsync();
+
+        _isEdit = false;
+
+        if (IsCreate)
+        {
+            NavigationManager.NavigateTo($"game/setup/pack/{pack.Id}");
+        }
+    }
+
+    private async Task UploadImage(Pack pack)
+    {
+        if (_upload.File == null) return;
+
+        var filename = await Files.UploadBrowserFile(_upload.File);
+        pack.ImageUrl = filename;
+    }
+
+    private void CancelEdit()
+    {
+        _isEdit = false;
+        _model = new PackModel(Pack);
+        StateHasChanged();
+    }
+
+}

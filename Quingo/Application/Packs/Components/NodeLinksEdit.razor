@@ -1,0 +1,93 @@
+﻿@inject PackRepo Repo
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<MudText Typo="Typo.h4" GutterBottom>
+    Link Types <MudTooltip Text="Add Link Type"><MudIconButton OnClick="AddLinkType" Icon="@Icons.Material.Filled.Add"></MudIconButton></MudTooltip>
+</MudText>
+
+<MudGrid>
+    <MudItem xs="12">
+        @if (Pack?.NodeLinkTypes != null)
+            @foreach (var link in Pack.NodeLinkTypes.Where(x => x.DeletedAt == null))
+            {
+                <LineItemEdit Id="@link.Id" Value="@link.Name" OnSave="SaveLinkType" OnDelete="ConfirmDeleteLinkType" />
+            }
+    </MudItem>
+</MudGrid>
+
+@code {
+    [CascadingParameter]
+    public Pack Pack { get; set; } = default!;
+
+    private async Task SaveLinkType(int id, string value)
+    {
+        await using var context = await Repo.CreateDbContext();
+        
+        if (id == 0)
+        {
+            var link = new NodeLinkType
+                {
+                    Name = value,
+                    Pack = Pack
+                };
+            context.Update(link);
+        }
+        else
+        {
+            var link = Pack.NodeLinkTypes.FirstOrDefault(x => x.Id == id);
+            if (link == null)
+            {
+                Snackbar.Add("Link Type not found", Severity.Error);
+                return;
+            }
+
+            link.Name = value;
+            context.Update(link);
+        }
+        await context.SaveChangesAsync();
+        StateHasChanged();
+    }
+
+    private async Task ConfirmDeleteLinkType(int id)
+    {
+        var link = Pack.NodeLinkTypes.FirstOrDefault(x => x.Id == id);
+        if (link == null)
+        {
+            Snackbar.Add("Link Type not found", Severity.Error);
+            return;
+        }
+
+        if (link.NodeLinks.Any(x => x.DeletedAt == null))
+        {
+            Snackbar.Add("Link Type is in use", Severity.Error);
+            return;
+        }
+
+        var parameters = new ConfirmDialog.ConfirmDialogParams
+            {
+                Prompt = $"Delete link type {link.Name}?",
+                ButtonText = "Delete",
+                ButtonColor = Color.Error
+            };
+        var confirmed = await ConfirmDialog.CallDialog(DialogService, parameters);
+
+        if (confirmed)
+        {
+            await DeleteLinkType(link);
+        }
+    }
+
+    private async Task DeleteLinkType(NodeLinkType link)
+    {
+        await using var context = await Repo.CreateDbContext();
+        context.Remove(link);
+        await context.SaveChangesAsync();
+        StateHasChanged();
+    }
+
+    private async Task AddLinkType()
+    {
+        await SaveLinkType(0, "New Link Type");
+    }
+}

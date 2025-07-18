@@ -1,0 +1,186 @@
+﻿@page "/game/host"
+
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
+@using Quingo.Infrastructure.Database.Repos
+
+@inject ILogger<CreateGame> Logger
+@inject PackRepo Repo
+@inject GameService GameService
+@inject ISnackbar Snackbar
+@inject NavigationManager NavigationManager
+@inject FileStoreService Files
+
+@attribute [Authorize]
+
+<PageTitle>Create Game</PageTitle>
+
+<MudText Typo="Typo.h3" GutterBottom>Create Game</MudText>
+<MudText Typo="Typo.h6" GutterBottom>Select Pack</MudText>
+
+<MudStack Row Spacing="2" Wrap="Wrap.Wrap" Class="pb-2">
+    @foreach (var pack in _packs)
+    {
+        <MudCard Class="pack-card clickable mud-ripple" @onclick="() => SelectPack(pack)" Outlined="pack == _pack">
+            @if (!string.IsNullOrEmpty(pack.ImageUrl))
+            {
+                <MudCardMedia Image="@Files.GetFileUrl(pack.ImageUrl)"/>
+            }
+            else
+            {
+                <div class="pack-default-image"></div>
+            }
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h5">@pack.Name</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                @if (!pack.IsPublished)
+                {
+                    <MudText Typo="Typo.body2"><i>Draft</i></MudText>
+                }
+                <MudText>@pack.Description</MudText>
+            </MudCardContent>
+        </MudCard>
+    }
+</MudStack>
+
+<MudContainer MaxWidth="MaxWidth.Small" Gutters="false" Class="ml-0 pb-3">
+    <MudStack>
+        @if (_pack != null)
+        {
+            @if (_preset != null)
+            {
+                <div>
+                    <MudText Typo="Typo.h6" GutterBottom>
+                        Pack Preset
+                        @if (!_isPresetEdit)
+                        {
+                            <MudTooltip Text="Edit Preset">
+                                <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                               OnClick="() => _isPresetEdit = true"></MudIconButton>
+                            </MudTooltip>
+                        }
+                    </MudText>
+                    <PresetEdit Preset="_preset" Pack="_pack" IsEdit="_isPresetEdit" OnSave="SetPresetData"
+                                OnCancelEdit="CancelPresetEdit"/>
+                </div>
+            }
+
+            <div>
+                <MudText Typo="Typo.h6">Game Options</MudText>
+                <MudForm>
+                    <MudTextField Label="Password" @bind-Value="_gameOptions.Password"/>
+                </MudForm>
+            </div>
+        }
+    </MudStack>
+</MudContainer>
+<MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PlayArrow"
+           OnClick="StartGame" Disabled="!CanStart">
+    Start Game
+</MudButton>
+<MudOverlay Visible="_isLoading" DarkBackground ZIndex="9999">
+    <MudProgressCircular Size="Size.Large" Color="Color.Primary" Indeterminate StrokeWidth="4"/>
+</MudOverlay>
+
+@code {
+    [CascadingParameter(Name = "UserId")] private string UserId { get; set; } = default!;
+
+    [CascadingParameter] private Task<AuthenticationState>? AuthenticationState { get; set; }
+
+    private List<Pack> _packs = [];
+
+    private Pack? _pack;
+
+    private PackPreset? _preset;
+
+    private bool _isPresetEdit;
+
+    private bool _isLoading;
+
+    private string? _userName;
+
+    private readonly GameOptions _gameOptions = new();
+
+    private bool CanStart => _pack != null && !_isPresetEdit && !_isLoading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var exGame = GameService.Games
+            .FirstOrDefault(x => x.HostUserId == UserId && x.IsStateActive);
+        if (exGame != null)
+        {
+            NavigationManager.NavigateTo($"/game/host/{exGame.GameSessionId}");
+            return;
+        }
+
+        await using var context = await Repo.CreateDbContext();
+        _packs = await context.Packs.Include(x => x.Tags)
+            .Include(x => x.Presets).AsNoTracking().ToListAsync();
+        if (AuthenticationState != null)
+        {
+            var auth = await AuthenticationState;
+            _userName = auth.User.FindFirstValue(ClaimTypes.Name);
+            if (!auth.User.IsInRole("admin") && !auth.User.IsInRole("editor"))
+            {
+                _packs = _packs.Where(x => x.IsPublished).ToList();
+            }
+        }
+    }
+
+    private void SelectPack(Pack pack)
+    {
+        _pack = pack;
+        _preset = _pack.Presets.FirstOrDefault();
+        StateHasChanged();
+    }
+
+    private async Task StartGame()
+    {
+        try
+        {
+            ArgumentNullException.ThrowIfNull(_pack, nameof(_pack));
+            ArgumentNullException.ThrowIfNull(UserId, nameof(UserId));
+            ArgumentNullException.ThrowIfNull(_preset, nameof(_preset));
+
+            _isLoading = true;
+            var game = await GameService.StartGame(_pack.Id, _preset.Data, _gameOptions, UserId);
+            if (_preset.Data.JoinOnCreate)
+            {
+                var player = GameService.JoinGame(game.GameSessionId, UserId, _userName ?? string.Empty, _gameOptions.Password);
+                NavigationManager.NavigateTo($"/game/play/{game.GameSessionId}/{player.PlayerSessionId}");
+            }
+            else
+            {
+                NavigationManager.NavigateTo($"/game/host/{game.GameSessionId}");
+            }
+        }
+        catch (Exception e)
+        {
+            Logger.LogError(e, e.Message);
+            Snackbar.Add(e.Message, Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private Task SetPresetData(PackPresetData data)
+    {
+        if (_preset != null)
+            _preset.Data = data;
+        _isPresetEdit = false;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private void CancelPresetEdit()
+    {
+        _isPresetEdit = false;
+        StateHasChanged();
+    }
+
+}

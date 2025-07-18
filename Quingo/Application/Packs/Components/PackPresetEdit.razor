@@ -1,0 +1,49 @@
+﻿@inject PackRepo Repo
+
+<MudText Typo="Typo.h4" GutterBottom>
+    Default Preset @if (!_isEdit)
+    {
+        <MudTooltip Text="Edit Preset">
+            <MudIconButton Icon="@Icons.Material.Filled.Edit" OnClick="() => _isEdit = true"></MudIconButton>
+        </MudTooltip>
+    }
+</MudText>
+
+<PresetEdit Preset="_preset" Pack="Pack" IsEdit="_isEdit" OnSave="Save" OnCancelEdit="CancelEdit" />
+
+
+@code {
+    [CascadingParameter]
+    public Pack Pack { get; set; } = default!;
+
+    private PackPreset _preset = default!;
+
+    private bool _isEdit;
+
+    protected override void OnParametersSet()
+    {
+        _preset = Pack.Presets.OrderBy(x => x.CreatedAt).FirstOrDefault()
+            ?? new PackPreset { PackId = Pack.Id };
+    }
+
+    private async Task Save(PackPresetData data)
+    {
+        await using var context = await Repo.CreateDbContext();
+        
+        _preset = await context.PackPresets
+                      .Include(x => x.Pack).ThenInclude(x => x.Tags)
+                      .FirstOrDefaultAsync(x => x.Id == _preset.Id) 
+                  ?? new PackPreset { PackId = Pack.Id };
+        _preset.Data = data;
+        context.Update(_preset);
+        await context.SaveChangesAsync();
+        _isEdit = false;
+        StateHasChanged();
+    }
+
+    private void CancelEdit()
+    {
+        _isEdit = false;
+        StateHasChanged();
+    }
+}

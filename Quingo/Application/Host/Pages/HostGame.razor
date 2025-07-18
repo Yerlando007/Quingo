@@ -1,0 +1,119 @@
+﻿@page "/game/host/{GameSessionId:guid}"
+@page "/game/spectate/{GameSessionId:guid}"
+
+@using Microsoft.AspNetCore.Authorization
+@using System.Security.Claims
+
+@implements IDisposable
+
+@inject ILogger<HostGame> Logger
+@inject GameService GameService
+@inject ISnackbar Snackbar
+@inject NavigationManager NavigationManager
+
+@attribute [Authorize]
+
+<PageTitle>Game</PageTitle>
+
+@if (_initError != null)
+{
+    <MudAlert Severity="Severity.Error">@_initError</MudAlert>
+}
+else if (_isInitialized)
+{
+    <CascadingValue Value="_game">
+        <HostLayout IsHost="IsHost"/>
+    </CascadingValue>
+}
+
+@code {
+    [CascadingParameter(Name = "UserId")] private string UserId { get; set; } = default!;
+
+    [Parameter] public Guid GameSessionId { get; set; }
+
+    [CascadingParameter] private Task<AuthenticationState>? AuthenticationState { get; set; }
+
+    private bool IsHost => _game.HostUserId == UserId || _user?.IsInRole("admin") == true;
+
+    private string? _initError;
+
+    private GameInstance _game = default!;
+
+    private bool _isInitialized;
+
+    private ClaimsPrincipal? _user;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            if (AuthenticationState != null)
+            {
+                _user = (await AuthenticationState)?.User;
+            }
+
+            await InitializeGame();
+            _isInitialized = true;
+        }
+        catch (Exception e)
+        {
+            if (e is not GameException)
+                Logger.LogError(e, e.Message);
+            _initError = e.Message;
+        }
+    }
+    
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_game == null || _game.GameSessionId == GameSessionId) return;
+        
+        try
+        {
+            _isInitialized = false;
+            await InitializeGame();
+            _isInitialized = true;
+        }
+        catch (Exception e)
+        {
+            if (e is not GameException)
+                Logger.LogError(e, e.Message);
+            _initError = e.Message;
+        }
+    }
+
+    private async Task InitializeGame()
+    {
+        _game = await GameService.GetGameState(GameSessionId, UserId);
+        var player = _game.Players.FirstOrDefault(x => x.PlayerUserId == UserId);
+        if (player != null)
+        {
+            NavigationManager.NavigateTo($"/game/play/{_game.GameSessionId}/{player.PlayerSessionId}");
+        }
+
+        _game.StateChanged += OnStateChanged;
+        _game.NewGameCreated += OnNewGameCreated;
+    }
+
+    private void OnStateChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnNewGameCreated(GameInstance game)
+    {
+        InvokeAsync(() =>
+        {
+            var url = IsHost ? $"/game/host/{game.GameSessionId}" : $"/game/spectate/{game.GameSessionId}";
+            NavigationManager.NavigateTo(url);
+        });
+    }
+
+    public void Dispose()
+    {
+        if (_game == null) return;
+
+        _game.StateChanged -= OnStateChanged;
+        _game.NewGameCreated -= OnNewGameCreated;
+    }
+
+}

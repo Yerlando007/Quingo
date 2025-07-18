@@ -1,0 +1,257 @@
+﻿@implements IDisposable
+@inject ISnackbar Snackbar
+
+<MudText Typo="Typo.h5" GutterBottom>Players (@DisplayPlayerCount)</MudText>
+@if (ShowPlayers && DisplayPlayers.Any())
+{
+    <div class="pb-2">
+        <MudButton OnClick="() => { _expandPlayers = !_expandPlayers; }"
+                   EndIcon="@(_expandPlayers ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)">
+            @(_expandPlayers ? "Hide Players" : "Expand Players")
+        </MudButton>
+    </div>
+}
+
+@if (ShowPlayers && _expandPlayers)
+{
+    <MudStack Row Wrap="Wrap.Wrap">
+        @foreach (var player in DisplayPlayers)
+        {
+            <div class="mw-100">
+                <MudText Typo="Typo.h6" GutterBottom>@RenderPlayerName(player, Size.Medium)</MudText>
+                <table class="dl-table">
+                    @if (Game.IsStateActive)
+                    {
+                        <tr>
+                            <th>Status</th>
+                            <td class="@PlayerStatusTextColorClass(player)">
+                                @PlayerStatusText(player)
+                            </td>
+                        </tr>
+                    }
+                    @if (ShowLives)
+                    {
+                        <tr>
+                            <th>Lives</th>
+                            <td>@player.LivesNumber</td>
+                        </tr>
+                    }
+                    <tr>
+                        <th>Score</th>
+                        <td>
+                            <PlayerScoreInfo Score="player.Score"/>
+                        </td>
+                    </tr>
+                </table>
+                @RenderPlayer(player)
+            </div>
+        }
+    </MudStack>
+}
+else
+{
+    <MudGrid>
+        <MudItem xs="12" lg="8">
+            <MudTable Items="Game.Players">
+                <HeaderContent>
+                    <MudTh>Name</MudTh>
+                    @if (Game.IsStateActive)
+                    {
+                        <MudTh>Status</MudTh>
+                    }
+                    @if (ShowLives)
+                    {
+                        <MudTh>Lives</MudTh>
+                    }
+                    @if (ShowPlayers)
+                    {
+                        <MudTh>Score</MudTh>
+                        <MudTh>Actions</MudTh>
+                    }
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Name">
+                        @RenderPlayerName(context, Size.Small)
+                    </MudTd>
+                    @if (Game.IsStateActive)
+                    {
+                        <MudTd DataLabel="Status">
+                            <span class="@PlayerStatusTextColorClass(context)">@PlayerStatusText(context)</span>
+                        </MudTd>
+                    }
+                    @if (ShowLives)
+                    {
+                        <MudTd DataLabel="Lives">@context.LivesNumber</MudTd>
+                    }
+                    @if (ShowPlayers)
+                    {
+                        <MudTd DataLabel="Score">
+                            <PlayerScoreInfo Score="context.Score"/>
+                        </MudTd>
+                        <MudTd DataLabel="Actions">
+                            @if (Player != context)
+                            {
+                                <MudButton Size="Size.Small" Color="Color.Primary" OnClick="() => ViewPlayer(context)">
+                                    View
+                                </MudButton>
+                            }
+                        </MudTd>
+                    }
+                </RowTemplate>
+            </MudTable>
+        </MudItem>
+    </MudGrid>
+}
+
+<MudDialog @bind-Visible="_dialogVisible" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            View Player: @_selectedPlayer?.PlayerName
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        @RenderPlayer(_selectedPlayer)
+    </DialogContent>
+</MudDialog>
+
+@code {
+
+    private RenderFragment RenderPlayer(PlayerInstance? player) => player == null
+        ? null
+        : @<CascadingValue Value="player">
+              @if (Game.Preset.SeparateDrawPerPlayer)
+              {
+                  <QuestionList DrawState="player.DrawState"
+                                ShowDetails="ShowDetails"
+                                ItemsToDisplay="Game.Preset.CardSize"
+                                TitleTypo="Typo.h6"
+                                ScrollOnDraw="false" Row/>
+              }
+              <PlayerCard TitleTypo="Typo.h6" ReadOnly ShowDetails="ShowDetails"/>
+          </CascadingValue>;
+
+    private RenderFragment RenderPlayerName(PlayerInstance? player, Size iconSize) => player == null
+        ? null
+        : @<span class="d-flex align-center">
+              @if (!player.IsPlayerConnected)
+              {
+                  <MudTooltip Text="Disconnected">
+                      <MudIcon Icon="@Icons.Material.Filled.WarningAmber" Size="iconSize" Color="Color.Warning"
+                               Class="d-flex mr-1"/>
+                  </MudTooltip>
+              }
+              @player.PlayerName
+          </span>;
+
+    [CascadingParameter] public GameInstance Game { get; set; } = default!;
+
+    [Parameter] public PlayerInstance? Player { get; set; }
+
+    [Parameter] public bool ShowDetails { get; set; }
+
+    private bool ShowLives => Game.Preset.LivesNumber > 0 && Game.Preset.EnableCall;
+
+    private bool ShowPlayers => Player == null || ShowDetails;
+
+    private IEnumerable<PlayerInstance> DisplayPlayers => Game.Players.Where(x => Player != x);
+
+    private DialogOptions _dialogOptions = new()
+    {
+        MaxWidth = MaxWidth.Large,
+        FullWidth = false,
+        CloseButton = true
+    };
+
+    private PlayerInstance? _selectedPlayer;
+
+    private bool _dialogVisible;
+
+    private bool _expandPlayers;
+
+    private string DisplayPlayerCount => Game.Preset.MaxPlayers > 0
+        ? $"{Game.Players.Count} / {Game.Preset.MaxPlayers}"
+        : Game.Players.Count.ToString();
+
+    private string PlayerStatusText(PlayerInstance player) => player.Status switch
+    {
+        PlayerStatus.Ready or PlayerStatus.NotReady
+            when Game.State is GameStateEnum.Active or GameStateEnum.Paused or GameStateEnum.FinalCountdown => "Playing",
+        PlayerStatus.NotReady => "Not Ready",
+        PlayerStatus.Ready when Game.State is GameStateEnum.Init => "Ready",
+        PlayerStatus.Done => "Done",
+        _ => "-"
+    };
+
+    private string PlayerStatusTextColorClass(PlayerInstance player) => player.Status switch
+    {
+        PlayerStatus.Ready or PlayerStatus.NotReady
+            when Game.State is GameStateEnum.Active or GameStateEnum.Paused or GameStateEnum.FinalCountdown => "mud-warning-text",
+        PlayerStatus.NotReady => "mud-error-text",
+        PlayerStatus.Ready when Game.State is GameStateEnum.Init => "mud-success-text",
+        PlayerStatus.Done => "mud-success-text",
+        _ => string.Empty
+    };
+
+    private void ViewPlayer(PlayerInstance player)
+    {
+        _selectedPlayer = player;
+        _dialogVisible = true;
+    }
+
+    protected override void OnInitialized()
+    {
+        Game.PlayerJoined += OnPlayerJoined;
+        Game.UserTracker.ConnectionsChanged += OnConnectionsChanged;
+        foreach (var player in Game.Players)
+        {
+            player.StateChanged += OnStateChanged;
+            player.LifeLost += OnLifeLost;
+        }
+    }
+
+    private void OnPlayerJoined(PlayerInstance player)
+    {
+        Snackbar.Add($"{player.PlayerName} has joined!", Severity.Info);
+        player.StateChanged += OnStateChanged;
+        player.LifeLost += OnLifeLost;
+    }
+
+    private void OnStateChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnConnectionsChanged(string userId, bool connected)
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnLifeLost(PlayerInstance player)
+    {
+        if (player != Player)
+        {
+            Snackbar.Add($"{player.PlayerName} has lost a life ({player.LivesNumber})", Severity.Info);
+        }
+        else
+        {
+            var text = player.LivesNumber > 1
+                ? $"{player.LivesNumber} lives left."
+                : player.LivesNumber == 1
+                    ? $"1 life left."
+                    : "You have no more lives. Game over.";
+            Snackbar.Add($"Incorrect! {text}", Severity.Error);
+        }
+    }
+
+    public void Dispose()
+    {
+        Game.PlayerJoined -= OnPlayerJoined;
+        Game.UserTracker.ConnectionsChanged -= OnConnectionsChanged;
+        foreach (var player in Game.Players)
+        {
+            player.StateChanged -= OnStateChanged;
+            player.LifeLost -= OnLifeLost;
+        }
+    }
+
+}

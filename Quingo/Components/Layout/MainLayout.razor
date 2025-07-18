@@ -1,0 +1,125 @@
+﻿@using Quingo.Shared
+@using System.Security.Claims
+
+@inherits LayoutComponentBase
+
+@inject TempUserStorage Store
+@inject IJSRuntime Js
+
+<MudThemeProvider @ref="@_mudThemeProvider" @bind-IsDarkMode="@_isDarkMode" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+<MudLayout>
+    <MudAppBar Elevation="1" Dense>
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())" />
+        <MudStack Row Class="ml-3" Spacing="1" AlignItems="AlignItems.Center">
+            <div class="q-logo"></div>
+            <MudText Typo="Typo.h5">Quingo</MudText>
+        </MudStack>
+        <MudSpacer />
+        <MudToggleIconButton Color="Color.Inherit" @bind-Toggled="_isDarkMode" @bind-Toggled:after="OnDarkModeToggle" 
+            Icon="@Icons.Material.Filled.LightMode" ToggledIcon="@Icons.Material.Filled.DarkMode" />
+    </MudAppBar>
+    <MudDrawer @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="2">
+        <NavMenu />
+    </MudDrawer>
+    <MudMainContent Class="mt-12 pa-2">
+        <CascadingValue Value="_userId" Name="UserId">
+            @Body
+        </CascadingValue>
+    </MudMainContent>
+</MudLayout>
+
+
+<div id="blazor-error-ui">
+    An unhandled error has occurred.
+    <a href="" class="reload">Reload</a>
+    <a class="dismiss">🗙</a>
+</div>
+
+@code {
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationState { get; set; }
+
+    private bool _drawerOpen = true;
+
+    private bool _isDarkMode;
+
+    private MudThemeProvider _mudThemeProvider = default!;
+
+    private string? _userId;
+
+    private void DrawerToggle()
+    {
+        _drawerOpen = !_drawerOpen;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthenticationState == null) return;
+
+        var auth = await AuthenticationState;
+        _userId = auth.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (_userId == null) return;
+
+        var storedDarkMode = StoreGetDarkMode();
+
+        if (storedDarkMode != null)
+        {
+            _isDarkMode = storedDarkMode.Value;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            if (_userId != null)
+            {
+                var storedDarkMode = StoreGetDarkMode();
+                if (storedDarkMode != null) return;
+            }
+
+            _isDarkMode = await _mudThemeProvider.GetSystemPreference();
+            StateHasChanged();
+            StoreSetDarkMode();
+            await StoreSetTimeZone();
+        }
+    }
+
+    private void OnDarkModeToggle()
+    {
+        StoreSetDarkMode();
+    }
+
+    private void StoreSetDarkMode()
+    {
+        if (_userId != null)
+        {
+            Store.Set(_userId, TempUserStorage.DarkMode, _isDarkMode.ToString());
+        }
+    }
+
+    private bool? StoreGetDarkMode()
+    {
+        return _userId != null 
+        && Store.TryGet(_userId, TempUserStorage.DarkMode, out var strValue)
+        && bool.TryParse(strValue, out var value) ? value : null;
+    }
+
+    private async Task StoreSetTimeZone()
+    {
+        if (_userId == null) return;
+        var timeZone = await Js.InvokeAsync<string>("window.getBrowserTimeZone");
+        if (!string.IsNullOrEmpty(timeZone))
+        {
+            Store.Set(_userId, TempUserStorage.TimeZone, timeZone);
+        }
+    }
+
+}
+
+

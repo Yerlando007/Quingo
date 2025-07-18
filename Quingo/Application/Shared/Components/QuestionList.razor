@@ -1,0 +1,137 @@
+﻿@inject IDialogService Dialog
+@inject IJSRuntime Js
+
+@implements IDisposable
+
+<MudText Typo="TitleTypo" GutterBottom>Draw History (@DrawState.DrawnNodes.Count&nbsp;/&nbsp;@DrawState.QuestionCount)
+</MudText>
+@if (_isInitialized)
+{
+    <MudStack Spacing="1" Row="Row" Wrap="Wrap.NoWrap" Class="@StackClass" id="q-list" Reverse>
+        @foreach (var node in _nodes)
+        {
+            <MudText Typo="TitleTypo" GutterBottom>1</MudText>
+            <NodeSquare Node="node" CellState="GetCellState(node)" ShowTagBadge
+                        ShowTagBadgeTooltip="DrawState.GameInstance.Preset.ShowTagBadges" OnClick="OnClick(node)!"/>
+        }
+    </MudStack>
+}
+
+@code {
+    const int MaxItemsToDisplay = 30;
+
+    [Parameter, EditorRequired] public GameDrawState DrawState { get; set; } = default!;
+
+    [Parameter] public int ItemsToDisplay { get; set; }
+
+    [Parameter] public bool ShowDetails { get; set; }
+
+    [Parameter] public bool Row { get; set; }
+
+    [Parameter] public Typo TitleTypo { get; set; } = Typo.h5;
+
+    [Parameter] public bool ScrollOnDraw { get; set; } = true;
+    
+    private bool _toggleHighlight = true;
+
+    private List<NodeViewModel> _nodes = [];
+
+    private Func<NodeViewModel, Action?> OnClick => (node) => ShowDetails ? () => ShowNodeDetails(node) : null;
+
+    private CancellationTokenSource _blinkCancelSrc = new();
+
+    private string StackClass => Row ? "overflow-y-scroll pb-2" : "overflow-x-scroll pr-2 d-inline-flex";
+
+    private Guid? _gameSessionId;
+
+    private bool _isInitialized;
+
+    protected override void OnInitialized()
+    {
+        InitializeGame();
+        _isInitialized = true;
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (DrawState.GameInstance.GameSessionId == _gameSessionId) return;
+
+        _isInitialized = false;
+        InitializeGame();
+        _isInitialized = true;
+    }
+
+    private void InitializeGame()
+    {
+        _gameSessionId = DrawState.GameInstance.GameSessionId;
+        _nodes = GetNodes();
+        DrawState.NodeDrawn += OnNodeDrawn;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && _nodes.Count > 0 && ScrollOnDraw)
+        {
+            await Task.Delay(100);
+            await Js.InvokeAsync<bool>("window.scrollToLastChild", "q-list");
+        }
+    }
+
+    private PlayerCardCellState GetCellState(NodeViewModel node) =>
+        node.Id == DrawState.DrawnNodes.Last().Id && _toggleHighlight ? PlayerCardCellState.Marked : default;
+
+    private async void ShowNodeDetails(NodeViewModel node)
+    {
+        await NodeDetailsDialog.ShowNodeDetails(Dialog, DrawState, node);
+    }
+
+    private List<NodeViewModel> GetNodes()
+    {
+        var itemsToDisplay = ItemsToDisplay > 0 ? ItemsToDisplay : MaxItemsToDisplay;
+        return DrawState.DrawnNodes.TakeLast(itemsToDisplay)
+            .Select(x => new NodeViewModel(x, DrawState.GameInstance.Preset, ShowLinksByTagEnum.Question)).ToList();
+    }
+
+    private void OnNodeDrawn()
+    {
+        InvokeAsync(async () =>
+        {
+            _nodes = GetNodes();
+            StateHasChanged();
+            await Task.Delay(100);
+            if (ScrollOnDraw)
+            {
+                await Js.InvokeAsync<bool>("window.scrollToLastChild", "q-list");
+            }
+            await Blink();
+        });
+    }
+
+    private async Task Blink()
+    {
+        await _blinkCancelSrc.CancelAsync();
+        _blinkCancelSrc = new();
+        var token = _blinkCancelSrc.Token;
+
+        for (int i = 0; i < 6; i++)
+        {
+            if (token.IsCancellationRequested) break;
+
+            _toggleHighlight = !_toggleHighlight;
+            StateHasChanged();
+            await Task.Delay(500, token);
+        }
+
+        if (!_toggleHighlight && !token.IsCancellationRequested)
+        {
+            _toggleHighlight = true;
+            StateHasChanged();
+        }
+    }
+
+    public void Dispose()
+    {
+        DrawState.NodeDrawn -= OnNodeDrawn;
+    }
+
+}

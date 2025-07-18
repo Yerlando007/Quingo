@@ -1,0 +1,130 @@
+﻿@inject IDialogService Dialog
+
+@implements IDisposable
+
+<MudText Typo="TitleTypo" GutterBottom>Player Card</MudText>
+<MudStack Spacing="1" Row Class="pb-2" Wrap="Wrap.NoWrap">
+    @foreach (var col in Player.GameInstance.Preset.Columns)
+    {
+        <MudCard Outlined Class="node-square node-header">
+            <MudCardContent Class="node-square-content">
+                <MudText Align="Align.Center" Typo="Typo.h5">
+                    <span class="node-text">@col.Name</span>
+                </MudText>
+            </MudCardContent>
+        </MudCard>
+    }
+</MudStack>
+
+@for (int row = 0; row < Player.Card.Cells.GetLength(1); row++)
+{
+    var cRow = row;
+    <MudStack Spacing="1" Row Class="pb-1" Wrap="Wrap.NoWrap">
+        @for (int col = 0; col < Player.Card.Cells.GetLength(0); col++)
+        {
+            var cell = Player.Card.Cells[col, cRow];
+            <PlayerCardCell Cell="cell" ShowDetails="ShowDetails" OnClick="@(OnCellClick(cell)!)"/>
+        }
+    </MudStack>
+}
+
+@code {
+    [CascadingParameter] public PlayerInstance Player { get; set; } = default!;
+
+    [Parameter] public bool ReadOnly { get; set; }
+
+    [Parameter] public bool ShowDetails { get; set; }
+    
+    [Parameter] public Typo TitleTypo { get; set; } = Typo.h5;
+
+    private PackPresetData Preset => Player.GameInstance.Preset;
+
+    private bool CanMark => !ReadOnly && Player.GameInstance.State is GameStateEnum.Active or GameStateEnum.FinalCountdown
+                                      && (Preset.MatchRule is PackPresetMatchRule.Default || Player.DrawState.DrawnNodes.Count > 0)
+                                      && Player.Status is not PlayerStatus.Done;
+
+
+    private bool RequireUnmarkConfirmation(PlayerCardCellData cell) => Preset.MatchRule is PackPresetMatchRule.LastDrawn
+                                                                       && cell.IsMarked
+                                                                       && cell.MatchedQNode != null
+                                                                       && cell.MatchedQNode != Player.DrawState.DrawnNodes.LastOrDefault();
+
+    private Guid? _gameSessionId;
+
+    private bool _isInitialized;
+
+    protected override void OnInitialized()
+    {
+        InitializeGame();
+        _isInitialized = true;
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (Player.GameInstance.GameSessionId == _gameSessionId) return;
+
+        _isInitialized = false;
+        InitializeGame();
+        _isInitialized = true;
+    }
+
+    private void InitializeGame()
+    {
+        _gameSessionId = Player.GameInstance.GameSessionId;
+        Player.DrawState.NodeDrawn += OnNodeDrawn;
+    }
+
+    private void OnNodeDrawn()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private Action<PlayerCardCellData>? OnCellClick(PlayerCardCellData cell)
+    {
+        if (CanMark)
+        {
+            if (RequireUnmarkConfirmation(cell))
+            {
+                return ShowUnmarkConfirmation;
+            }
+
+            return Mark;
+        }
+
+        if (ShowDetails)
+        {
+            return ShowCellDetails;
+        }
+
+        return null;
+    }
+
+    private void Mark(PlayerCardCellData cell)
+    {
+        if (CanMark)
+        {
+            Player.Mark(cell.Col, cell.Row);
+        }
+    }
+
+    private async void ShowCellDetails(PlayerCardCellData cell)
+    {
+        var model = cell.Node == null ? null : new NodeViewModel(cell.Node, Player.GameInstance.Preset);
+        await NodeDetailsDialog.ShowNodeDetails(Dialog, Player.DrawState, model);
+    }
+
+    private async void ShowUnmarkConfirmation(PlayerCardCellData cell)
+    {
+        var result = await Dialog.ShowMessageBox("Confirmation", "The cell will be unmarked", "OK", null, "Cancel");
+        if (result == true)
+        {
+            Player.Mark(cell.Col, cell.Row);
+        }
+    }
+
+    public void Dispose()
+    {
+        Player.DrawState.NodeDrawn -= OnNodeDrawn;
+    }
+
+}

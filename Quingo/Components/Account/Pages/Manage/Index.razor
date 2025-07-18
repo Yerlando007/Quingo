@@ -1,0 +1,95 @@
+﻿@page "/Account/Manage"
+
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Identity
+
+@inject UserManager<ApplicationUser> UserManager
+@inject SignInManager<ApplicationUser> SignInManager
+@inject IdentityUserAccessor UserAccessor
+@inject IdentityRedirectManager RedirectManager
+
+<PageTitle>Profile</PageTitle>
+
+<MudText Typo="Typo.h6" GutterBottom="true">Profile</MudText>
+
+<StatusMessage />
+
+<EditForm Model="Input" FormName="profile" OnValidSubmit="OnValidSubmitAsync" method="post">
+    <DataAnnotationsValidator />
+
+    <MudGrid>
+        <MudItem md="12">
+            <MudStaticTextField For="@(() => Input.Username)" @bind-Value="Input.Username"
+                                Label="Username" Placeholder="Please enter your username."
+                                UserAttributes="@(new() { { "autocomplete", "username" }, { "aria-required", "true" } } )" />
+        </MudItem>
+        <MudItem md="12">
+            <MudStaticTextField For="@(() => Input.Email)" @bind-Value="Input.Email"
+                                Label="Email" Placeholder="Please enter your email."
+                                UserAttributes="@(new() { { "autocomplete", "email" }, { "aria-required", "true" } } )" />
+        </MudItem>
+        <MudItem md="12">
+            <MudStaticButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" FormAction="FormAction.Submit">Save</MudStaticButton>
+        </MudItem>
+    </MudGrid>
+</EditForm>
+
+@code {
+    private ApplicationUser user = default!;
+
+    private string? username;
+
+    private string? email;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm]
+    private InputModel Input { get; set; } = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        user = await UserAccessor.GetRequiredUserAsync(HttpContext);
+        username = await UserManager.GetUserNameAsync(user);
+        email = await UserManager.GetEmailAsync(user);
+
+        Input.Username ??= username;
+        Input.Email ??= email;
+    }
+
+    private async Task OnValidSubmitAsync()
+    {
+        if (Input.Username != username)
+        {
+            var setUsernameResult = await UserManager.SetUserNameAsync(user, Input.Username);
+            if (!setUsernameResult.Succeeded)
+            {
+                RedirectManager.RedirectToCurrentPageWithStatus("Error: Failed to set username.", HttpContext);
+            }
+        }
+
+        if (Input.Email != email)
+        {
+            var setEmailResult = await UserManager.SetEmailAsync(user, Input.Email);
+            if (!setEmailResult.Succeeded)
+            {
+                RedirectManager.RedirectToCurrentPageWithStatus("Error: Failed to set email.", HttpContext);
+            }
+        }
+
+        await SignInManager.RefreshSignInAsync(user);
+        RedirectManager.RedirectToCurrentPageWithStatus("Your profile has been updated", HttpContext);
+    }
+
+    private sealed class InputModel
+    {
+        [Required]
+        [Display(Name = "Username")]
+        public string? Username { get; set; }
+
+        [Required]
+        [EmailAddress]
+        [Display(Name = "Email")]
+        public string? Email { get; set; }
+    }
+}

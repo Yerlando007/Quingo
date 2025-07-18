@@ -1,0 +1,95 @@
+﻿@inject PackRepo Repo
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<MudText Typo="Typo.h4" GutterBottom>
+    Tags <MudTooltip Text="Add Tag"><MudIconButton OnClick="AddTag" Icon="@Icons.Material.Filled.Add"></MudIconButton></MudTooltip>
+</MudText>
+
+<MudGrid>
+    <MudItem xs="12">
+        @if (Pack?.Tags != null)
+        {
+            @foreach (var tag in Pack.Tags.Where(x => x.DeletedAt == null))
+            {
+                <LineItemEdit Id="@tag.Id" Value="@tag.Name" OnSave="SaveTag" OnDelete="ConfirmDeleteTag" />
+            }
+        }
+    </MudItem>
+</MudGrid>
+
+@code {
+    [CascadingParameter]
+    public Pack Pack { get; set; } = default!;
+
+    private async Task SaveTag(int id, string value)
+    {
+        await using var context = await Repo.CreateDbContext();
+        
+        if (id == 0)
+        {
+            var tag = new Tag
+                {
+                    Name = value,
+                    Pack = Pack
+                };
+            context.Update(tag);
+        }
+        else
+        {
+            var tag = Pack.Tags.FirstOrDefault(x => x.Id == id);
+            if (tag == null)
+            {
+                Snackbar.Add("Tag not found", Severity.Error);
+                return;
+            }
+
+            tag.Name = value;
+            context.Update(tag);
+        }
+        await context.SaveChangesAsync();
+        StateHasChanged();
+    }
+
+    private async Task ConfirmDeleteTag(int id)
+    {
+        var tag = Pack.Tags.FirstOrDefault(x => x.Id == id);
+        if (tag == null)
+        {
+            Snackbar.Add("Tag not found", Severity.Error);
+            return;
+        }
+
+        if (tag.NodeTags.Any(x => x.DeletedAt == null))
+        {
+            Snackbar.Add("Tag is in use", Severity.Error);
+            return;
+        }
+
+        var parameters = new ConfirmDialog.ConfirmDialogParams
+            {
+                Prompt = $"Delete tag {tag.Name}?",
+                ButtonText = "Delete",
+                ButtonColor = Color.Error
+            };
+        var confirmed = await ConfirmDialog.CallDialog(DialogService, parameters);
+
+        if (confirmed)
+        {
+            await DeleteTag(tag);
+        }
+    }
+
+    private async Task DeleteTag(Tag tag)
+    {
+        await using var context = await Repo.CreateDbContext();
+        context.Remove(tag);
+        await context.SaveChangesAsync();
+        StateHasChanged();
+    }
+
+    private async Task AddTag()
+    {
+        await SaveTag(0, "New Tag");
+    }
+}

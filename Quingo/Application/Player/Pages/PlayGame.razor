@@ -1,0 +1,125 @@
+﻿@page "/game/play/{GameSessionId:guid}/{PlayerSessionId:guid}"
+
+@using Microsoft.AspNetCore.Authorization
+
+@implements IDisposable
+
+@inject GameService GameService
+@inject ISnackbar Snackbar
+@inject ILogger<PlayGame> Logger
+@inject IDialogService Dialog
+@inject NavigationManager NavigationManager
+
+@attribute [Authorize]
+
+<PageTitle>Play</PageTitle>
+
+@if (_initError != null)
+{
+    <MudAlert Severity="Severity.Error">@_initError</MudAlert>
+}
+else if (_isInitialized)
+{
+    <CascadingValue Value="_instance">
+        <PlayerLayout/>
+    </CascadingValue>
+}
+
+@code {
+    [CascadingParameter(Name = "UserId")] private string UserId { get; set; } = default!;
+
+    [Parameter] public Guid GameSessionId { get; set; }
+
+    [Parameter] public Guid PlayerSessionId { get; set; }
+
+    private string? _initError;
+
+    private PlayerInstance _instance = default!;
+
+    private bool _isInitialized;
+
+    protected override void OnInitialized()
+    {
+        try
+        {
+            InitializeGame();
+            _isInitialized = true;
+        }
+        catch (Exception e)
+        {
+            if (e is not GameException)
+                Logger.LogError(e, e.Message);
+            _initError = e.Message;
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (_instance == null
+            || (_instance.PlayerSessionId == PlayerSessionId && _instance.GameInstance.GameSessionId == GameSessionId)) return;
+
+        try
+        {
+            _isInitialized = false;
+            InitializeGame();
+            _isInitialized = true;
+        }
+        catch (Exception e)
+        {
+            if (e is not GameException)
+                Logger.LogError(e, e.Message);
+            _initError = e.Message;
+        }
+    }
+
+    private void InitializeGame()
+    {
+        _instance = GameService.GetPlayerState(GameSessionId, PlayerSessionId, UserId);
+        _instance.StateChanged += OnInstanceChanged;
+        _instance.GameInstance.StateChanged += OnInstanceChanged;
+        _instance.GameInstance.GameStateChanged += OnGameInstanceChanged;
+        _instance.NewGameCreated += OnNewGameCreated;
+    }
+
+    private void OnInstanceChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnGameInstanceChanged(GameStateEnum state)
+    {
+        InvokeAsync(async () =>
+        {
+            if (state == GameStateEnum.FinalCountdown)
+            {
+                Snackbar.Add("Countdown!", Severity.Warning);
+            }
+            else if (state is GameStateEnum.Canceled && _instance.GameInstance.HostUserId != UserId)
+            {
+                await Dialog.ShowMessageBox("The game has ended", $"{_instance.GameInstance.HostName} has stopped the game. Thanks for playing!");
+            }
+            else if (state is GameStateEnum.Canceled or GameStateEnum.Finished)
+            {
+                await Dialog.ShowMessageBox("The game has ended", "Thanks for playing!");
+            }
+        });
+    }
+
+    private void OnNewGameCreated(GameInstance game, PlayerInstance player)
+    {
+        InvokeAsync(() =>
+        {
+            NavigationManager.NavigateTo($"/game/play/{game.GameSessionId}/{player.PlayerSessionId}");
+        });
+    }
+
+    public void Dispose()
+    {
+        if (_instance == null) return;
+        _instance.StateChanged -= OnInstanceChanged;
+        _instance.GameInstance.StateChanged -= OnInstanceChanged;
+        _instance.GameInstance.GameStateChanged -= OnGameInstanceChanged;
+        _instance.NewGameCreated -= OnNewGameCreated;
+    }
+
+}

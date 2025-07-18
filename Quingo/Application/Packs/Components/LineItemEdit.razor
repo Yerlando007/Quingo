@@ -1,0 +1,78 @@
+﻿@if (isEdit)
+{
+    <MudGrid>
+        <MudItem xs="12" Class="d-inline-flex justify-space-between align-center">
+            <MudTextField @bind-Value="@value" OnKeyUp="SaveOnEnter" />
+            <span>
+                <MudTooltip Text="Save">
+                    <MudIconButton OnClick="Save" Icon="@Icons.Material.Filled.Save"></MudIconButton>
+                </MudTooltip>
+                <MudTooltip Text="Cancel">
+                    <MudIconButton OnClick="() => isEdit = false" Icon="@Icons.Material.Filled.Cancel"></MudIconButton>
+                </MudTooltip>
+            </span>
+        </MudItem>
+    </MudGrid>
+}
+else
+{
+    <MudGrid class="row">
+        <MudItem xs="12" Class="d-inline-flex justify-space-between align-center">
+            <MudText Inline>@Value</MudText>
+            <span>
+                <MudTooltip Text="Edit">
+                    <MudIconButton OnClick="() => isEdit = true" Icon="@Icons.Material.Filled.Edit"></MudIconButton>
+                </MudTooltip><MudTooltip Text="Delete" ShowOnFocus="false">
+                    <MudIconButton OnClick="Delete" Icon="@Icons.Material.Filled.Delete"></MudIconButton>
+                </MudTooltip>
+            </span>
+        </MudItem>
+    </MudGrid>
+}
+
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    [Parameter]
+    public string? Value { get; set; }
+
+    [Parameter]
+    public Func<int, string, Task>? OnSave { get; set; }
+
+    [Parameter]
+    public Func<int, Task>? OnDelete { get; set; }
+
+    private string value = "";
+
+    private bool isEdit;
+
+    protected override void OnInitialized()
+    {
+        value = Value ?? "";
+    }
+
+    private async Task Save()
+    {
+        if (OnSave != null)
+        {
+            await OnSave.Invoke(Id, value);
+            isEdit = false;
+        }
+    }
+
+    private async Task Delete()
+    {
+        if (OnDelete != null)
+            await OnDelete.Invoke(Id);
+    }
+
+    private async Task SaveOnEnter(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await Save();
+        }
+    }
+}

@@ -1,0 +1,110 @@
+﻿@page "/game/setup/packs"
+
+@using Microsoft.AspNetCore.Authorization
+@using System.Security.Claims
+
+@inject PackRepo Repo
+@inject FileStoreService Files
+@inject IDialogService DialogService
+
+@attribute [Authorize(Roles = "editor, admin")]
+
+<PageTitle>Packs</PageTitle>
+
+<MudText Typo="Typo.h3" GutterBottom="true">Packs</MudText>
+
+@if (Packs == null)
+{
+    <MudText><em>Loading...</em></MudText>
+}
+else
+{
+    <MudButton Href="game/setup/pack" StartIcon="@Icons.Material.Filled.Add" Class="mb-4">New Pack</MudButton>
+    <MudStack Row Spacing="2" Wrap="Wrap.Wrap">
+        @foreach (var pack in Packs.Where(x => x.DeletedAt == null).OrderBy(x => x.CreatedAt))
+        {
+
+            <MudCard Class="pack-card">
+                @if (!string.IsNullOrEmpty(pack.ImageUrl))
+                {
+                    <MudCardMedia Image="@Files.GetFileUrl(pack.ImageUrl)" />
+                }
+                else
+                {
+                    <div class="pack-default-image" />
+                }
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h5">@pack.Name</MudText>
+                    </CardHeaderContent>
+                    <CardHeaderActions>
+                        @if (UserCanEdit(pack))
+                        {
+                            <MudTooltip Text="Edit Pack">
+                                <MudIconButton Href="@($"game/setup/pack/{pack.Id}")" Icon="@Icons.Material.Filled.Edit"></MudIconButton>
+                            </MudTooltip>
+                            <MudTooltip Text="Delete Pack" ShowOnFocus="false">
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" OnClick="async () => await ConfirmDelete(pack)"></MudIconButton>
+                            </MudTooltip>
+                        }
+                    </CardHeaderActions>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudText>@pack.Description</MudText>
+                </MudCardContent>
+            </MudCard>
+
+        }
+    </MudStack>
+}
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationState { get; set; }
+
+    public List<Pack>? Packs { get; set; }
+
+    public string? UserId { get; set; }
+
+    private ClaimsPrincipal? _user;
+
+    private bool UserCanEdit(Pack pack) => pack.CreatedByUserId == UserId || _user?.IsInRole("admin") == true || _user?.IsInRole("editor") == true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var context = await Repo.CreateDbContext();
+        
+        Packs = await context.Packs.ToListAsync();
+        if (AuthenticationState != null)
+        {
+            _user = (await AuthenticationState)?.User;
+            UserId = _user?.FindFirstValue(ClaimTypes.NameIdentifier);
+        }
+    }
+
+    private async Task ConfirmDelete(Pack pack)
+    {
+        var parameters = new ConfirmDialog.ConfirmDialogParams
+            {
+                Prompt = $"Delete pack {pack.Name}?",
+                ButtonText = "Delete",
+                ButtonColor = Color.Error
+            };
+        var confirmed = await ConfirmDialog.CallDialog(DialogService, parameters);
+
+        if (confirmed)
+        {
+            await DeletePack(pack);
+        }
+    }
+
+    private async Task DeletePack(Pack pack)
+    {
+        if (!UserCanEdit(pack)) return;
+        
+        await using var context = await Repo.CreateDbContext();
+        context.Remove(pack);
+        await context.SaveChangesAsync();
+        StateHasChanged();
+    }
+}

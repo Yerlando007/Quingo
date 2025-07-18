@@ -1,0 +1,75 @@
+﻿@implements IDisposable
+
+<table class="dl-table">
+    <tr>
+        <th>Game State</th>
+        <td>@Game.StateDisplayValue</td>
+    </tr>
+    @if (Game.WinningPlayers.Count > 0)
+    {
+        <tr>
+            <th>@(Game.WinningPlayers.Count == 1 ? "Winner" : "Winners")</th>
+            <td>@string.Join(", ", Game.WinningPlayers.Select(x => x.PlayerName))</td>
+        </tr>
+    }
+</table>
+
+<MudStack Row Spacing="4" Class="pt-4">
+    @if (Game.ShowTimer)
+    {
+        <GameTimerProgress Timer="Game.Timer" Title="Timer" ColorPercentages="Game.TimerColorPercentages"/>
+    }
+
+    @if (Game.DrawState != null && Game.Preset.AutoDrawTimer > 0 && Game.State is GameStateEnum.Init or GameStateEnum.Active or GameStateEnum.Paused)
+    {
+        <GameTimerProgress Timer="Game.DrawState.AutoDrawTimer" Title="Next"/>
+    }
+</MudStack>
+
+@code {
+    [CascadingParameter] public GameInstance Game { get; set; } = default!;
+
+    private Guid? _gameSessionId;
+
+    private bool _isInitialized;
+
+    protected override void OnInitialized()
+    {
+        InitializeGame();
+        _isInitialized = true;
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (Game.GameSessionId == _gameSessionId) return;
+
+        _isInitialized = false;
+        InitializeGame();
+        _isInitialized = true;
+    }
+
+    private void InitializeGame()
+    {
+        _gameSessionId = Game.GameSessionId;
+        Game.TimerUpdated += OnTimerUpdated;
+        if (Game.DrawState != null)
+        {
+            Game.DrawState.TimerUpdated += OnTimerUpdated;
+        }
+    }
+
+    private void OnTimerUpdated()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Game.TimerUpdated -= OnTimerUpdated;
+        if (Game.DrawState != null)
+        {
+            Game.DrawState.TimerUpdated -= OnTimerUpdated;
+        }
+    }
+
+}

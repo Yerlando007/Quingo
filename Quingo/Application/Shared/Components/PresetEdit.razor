@@ -1,0 +1,277 @@
+﻿<MudGrid>
+    <MudItem xs="12">
+        @if (IsEdit)
+        {
+            <MudCard>
+                <MudCardContent>
+                    <MudForm @ref="@_form">
+                        <MudNumericField @bind-Value="_model.CardSize" @bind-Value:after="OnCardSizeUpdated"
+                                         Label="Card Size" Min="3" Max="5" Required/>
+                        <MudCheckBox @bind-Value="_model.FreeCenter" Label="Free Center"
+                                     Disabled="!_model.IsFreeCenterEnabled"/>
+                        <MudNumericField @bind-Value="_model.MaxPlayers" Label="Number of Players"
+                                         HelperText="Max number of players, 0 for unlimited" Min="0"/>
+                        <MudStack Row>
+                            <MudNumericField T="int?" Label="Min Difficulty" @bind-Value="_model.MinDifficulty" Min="1" Max="@(_model.MaxDifficulty ?? 5)"/>
+                            <MudNumericField T="int?" Label="Max Difficulty" @bind-Value="_model.MaxDifficulty" Min="@(_model.MinDifficulty ?? 1)" Max="5"/>
+                        </MudStack>
+                        <MudNumericField @bind-Value="_model.GameTimer" Label="Game Timer"
+                                         HelperText="Game timer in seconds, 0 for no timer" Min="0" Max="60*10"/>
+                        <MudNumericField @bind-Value="_model.EndgameTimer" Label="Endgame Timer" Min="0" Max="60*5"/>
+                        <MudNumericField @bind-Value="_model.AutoDrawTimer" Label="Auto Draw Timer"
+                                         HelperText="Auto draw every n seconds, 0 to disable" Min="0" Max="60"/>
+                        <MudCheckBox @bind-Value="_model.SeparateDrawPerPlayer" Label="Players draw separately"/>
+                        <MudCheckBox @bind-Value="_model.SamePlayerCards" Label="Players have same Cards"/>
+                        <MudSelect T="PackPresetPattern" Label="Winning Pattern" @bind-Value="@_model.Pattern">
+                            <MudSelectItem Value="PackPresetPattern.Lines">Line</MudSelectItem>
+                            <MudSelectItem Value="PackPresetPattern.FullCard">Full Card</MudSelectItem>
+                        </MudSelect>
+                        <MudSelect T="PackPresetMatchRule" Label="Match Rule" @bind-Value="@_model.MatchRule">
+                            <MudSelectItem Value="PackPresetMatchRule.Default">Default</MudSelectItem>
+                            <MudSelectItem Value="PackPresetMatchRule.LastDrawn">Last Drawn Only</MudSelectItem>
+                        </MudSelect>
+                        <MudSelect T="PackPresetScoringRules" MultiSelection Label="Scoring Rules"
+                                   @bind-SelectedValues="@_model.ScoringRules" ToStringFunc="x => x.GetName()">
+                            @foreach (var rule in (PackPresetScoringRules[])
+                                      [
+                                          PackPresetScoringRules.CellScore,
+                                          PackPresetScoringRules.PatternBonus,
+                                          PackPresetScoringRules.TimeBonus,
+                                          PackPresetScoringRules.CustomCellScore,
+                                          PackPresetScoringRules.ErrorPenalty,
+                                          PackPresetScoringRules.DrawPenalty,
+                                      ])
+                            {
+                                <MudSelectItem T="PackPresetScoringRules" Value="rule">@rule.GetName()</MudSelectItem>
+                            }
+                        </MudSelect>
+                        <MudCheckBox @bind-Value="_model.EnableCall" Label="Enable Call"/>
+                        <MudNumericField @bind-Value="_model.LivesNumber" Label="Number of Lives" Min="0"
+                                         Disabled="!_model.EnableCall"/>
+                        <MudCheckBox @bind-Value="_model.JoinOnCreate" Label="Host joins Game"/>
+                        <MudCheckBox @bind-Value="_model.ShowTagBadges" Label="Show Tag Badges"/>
+                        <MudCheckBox @bind-Value="_model.SingleColumnConfig" Label="Same Column Config"/>
+
+                        <MudText Typo="Typo.h6" Class="pt-2">Columns</MudText>
+
+                        <MudExpansionPanels MultiExpansion Class="unpadx-4" Elevation="0">
+                            @foreach (var (col, i) in _model.Columns.Select((col, i) => (col, i)))
+                            {
+                                <MudExpansionPanel Text="@($"Column {(!string.IsNullOrEmpty(col.Name) ? col.Name : (i + 1).ToString())}")">
+                                    <MudGrid>
+                                        <MudItem xs="12">
+                                            <MudTextField Label="Column Name" @bind-Value="col.Name"/>
+                                            <MudSelect T="int" MultiSelection Label="Exclude Tags"
+                                                       @bind-SelectedValues="col.ExcludeTags"
+                                                       MultiSelectionTextFunc="GetTagsSelectText"
+                                                       Disabled="@(_model.SingleColumnConfig && _model.Columns.IndexOf(col) > 0)"
+                                                       @bind-SelectedValues:after="() => OnColumnConfigUpdated(col)">
+                                                @foreach (var tag in Pack.Tags)
+                                                {
+                                                    <MudSelectItem T="int" Value="@tag.Id">@tag.Name</MudSelectItem>
+                                                }
+                                            </MudSelect>
+                                            <MudSelect T="int" MultiSelection Label="Question Tags"
+                                                       @bind-SelectedValues="col.QuestionTags"
+                                                       MultiSelectionTextFunc="GetTagsSelectText"
+                                                       Disabled="@(_model.SingleColumnConfig && _model.Columns.IndexOf(col) > 0)"
+                                                       @bind-SelectedValues:after="() => OnColumnConfigUpdated(col)">
+                                                @foreach (var tag in Pack.Tags)
+                                                {
+                                                    <MudSelectItem T="int" Value="@tag.Id">@tag.Name</MudSelectItem>
+                                                }
+                                            </MudSelect>
+                                            <MudSelect T="PackPresetTagModel" MultiSelection Label="Answer Tags"
+                                                       @bind-SelectedValues="col.AnswerTags"
+                                                       MultiSelectionTextFunc="GetTagsSelectText"
+                                                       Comparer="@(new PackPresetTagModel.PackPresetTagModelComparer())"
+                                                       Disabled="@(_model.SingleColumnConfig && _model.Columns.IndexOf(col) > 0)"
+                                                       @bind-SelectedValues:after="() => OnColumnConfigUpdated(col)">
+                                                @foreach (var tag in Pack.Tags)
+                                                {
+                                                    <MudSelectItem T="PackPresetTagModel"
+                                                                   Value="@(new PackPresetTagModel(tag.Id))">@tag.Name</MudSelectItem>
+                                                }
+                                            </MudSelect>
+                                        </MudItem>
+                                        <MudItem xs="12">
+                                            <MudText Typo="Typo.body1" Class="py-2">Player Card Generation
+                                            </MudText>
+                                            <MudSimpleTable Elevation="0" Class="unpadx-4">
+                                                <thead>
+                                                <tr>
+                                                    <th>Tag</th>
+                                                    <th>Min Items</th>
+                                                    <th>Max Items</th>
+                                                </tr>
+                                                </thead>
+                                                <tbody>
+                                                @foreach (var tag in col.AnswerTags.OrderBy(x => x.TagId))
+                                                {
+                                                    <tr>
+                                                        <td>
+                                                            <MudChip T="string" Variant="Variant.Filled"
+                                                                     Color="Color.Info"
+                                                                     Class="align-self-end">@GetTagName(tag.TagId)</MudChip>
+                                                        </td>
+                                                        <td>
+                                                            <MudNumericField T="int?"
+                                                                             @bind-Value="@tag.ItemsMin"
+                                                                             Min="0"
+                                                                             Disabled="@(_model.SingleColumnConfig && _model.Columns.IndexOf(col) > 0)"/>
+                                                        </td>
+                                                        <td>
+                                                            <MudNumericField T="int?"
+                                                                             @bind-Value="@tag.ItemsMax"
+                                                                             Min="0"
+                                                                             Disabled="@(_model.SingleColumnConfig && _model.Columns.IndexOf(col) > 0)"/>
+                                                        </td>
+                                                    </tr>
+                                                }
+                                                </tbody>
+                                            </MudSimpleTable>
+                                        </MudItem>
+                                    </MudGrid>
+                                </MudExpansionPanel>
+                            }
+                        </MudExpansionPanels>
+                    </MudForm>
+                </MudCardContent>
+                <MudCardActions>
+                    <div class="ml-auto">
+                        <MudButton Color="Color.Primary" OnClick="Save" StartIcon="@Icons.Material.Filled.Save">Save
+                        </MudButton>
+                        <MudButton Color="Color.Secondary" OnClick="CancelEdit"
+                                   StartIcon="@Icons.Material.Filled.Cancel">Cancel
+                        </MudButton>
+                    </div>
+                </MudCardActions>
+            </MudCard>
+        }
+        else
+        {
+            <MudList T="string" ReadOnly>
+                <MudListItem Text="Card Size" SecondaryText="@_model.CardSize.ToString()"/>
+                <MudListItem Text="Free Center" SecondaryText="@(_model.FreeCenter ? "Yes" : "No")"/>
+                <MudListItem Text="Number of Players" SecondaryText="@_model.MaxPlayers.ToString()"/>
+                <MudListItem Text="Min Difficulty" SecondaryText="@((_model.MinDifficulty ?? 1).ToString())"/>
+                <MudListItem Text="Max Difficulty" SecondaryText="@((_model.MaxDifficulty ?? 5).ToString())"/>
+                <MudListItem Text="Game Timer" SecondaryText="@(_model.GameTimer > 0 ? $"{_model.GameTimer} sec" : "-")"/>
+                <MudListItem Text="Endgame Timer" SecondaryText="@(_model.EndgameTimer > 0 ? $"{_model.EndgameTimer} sec" : "-")"/>
+                <MudListItem Text="Auto Draw" SecondaryText="@(_model.AutoDrawTimer > 0 ? $"{_model.AutoDrawTimer} sec" : "-")"/>
+                <MudListItem Text="Players draw separately" SecondaryText="@(_model.SeparateDrawPerPlayer ? "Yes" : "No")"/>
+                <MudListItem Text="Players have same Cards" SecondaryText="@(_model.SamePlayerCards ? "Yes" : "No")"/>
+                <MudListItem Text="Winning Pattern"
+                             SecondaryText="@(_model.Pattern == PackPresetPattern.Lines ? "Line" : "Full Card")"/>
+                <MudListItem Text="Match Rule"
+                             SecondaryText="@(_model.MatchRule == PackPresetMatchRule.Default ? "Default" : "Last Drawn Only")"/>
+                <MudListItem Text="Scoring Rules" SecondaryText="@GetScoringRuleNames(_model.ScoringRules)"/>
+                <MudListItem Text="Enable Call" SecondaryText="@(_model.EnableCall ? "Yes" : "No")"/>
+                <MudListItem Text="Number of Lives"
+                             SecondaryText="@(_model.EnableCall ? _model.LivesNumber.ToString() : "-")"/>
+                <MudListItem Text="Host joins Game" SecondaryText="@(_model.JoinOnCreate ? "Yes" : "No")"/>
+                <MudListItem Text="Show Tag Badges" SecondaryText="@(_model.ShowTagBadges ? "Yes" : "No")"/>
+                @for (var i = 0; i < _model.Columns.Count; i++)
+                {
+                    var col = _model.Columns[i];
+                    <MudListItem Text="@($"Column {(!string.IsNullOrEmpty(col.Name) ? col.Name : (i + 1).ToString())}")" Expanded="false">
+                        <NestedList>
+                            <MudListItem Text="Exclude Tags" SecondaryText="@GetTagsSelectText(col.ExcludeTags)"/>
+                            <MudListItem Text="Name" SecondaryText="@col.Name"/>
+                            <MudListItem Text="Question Tags" SecondaryText="@GetTagsSelectText(col.QuestionTags)"/>
+                            <MudListItem Text="Answer Tags"
+                                         SecondaryText="@GetTagsSelectText(col.AnswerTags.Select(x => x.TagId))"/>
+                            <MudListItem Text="Player Card Generation" class="mud-nested-list-lvl2">
+                                <NestedList>
+                                    @foreach (var tagConfig in col.AnswerTags)
+                                    {
+                                        <MudListItem Text="@GetTagName(tagConfig.TagId)" 
+                                                     SecondaryText="@($"Min: {tagConfig.ItemsMin?.ToString() ?? "-"}, Max: {tagConfig.ItemsMax?.ToString() ?? "-"}")"/>
+                                    }
+                                </NestedList>
+                            </MudListItem>
+                        </NestedList>
+                    </MudListItem>
+                }
+            </MudList>
+        }
+    </MudItem>
+</MudGrid>
+
+
+@code {
+    [Parameter, EditorRequired] public PackPreset Preset { get; set; } = default!;
+
+    [Parameter] public bool IsEdit { get; set; }
+
+    [Parameter] public Func<PackPresetData, Task>? OnSave { get; set; }
+
+    [Parameter] public Action? OnCancelEdit { get; set; }
+
+    [Parameter, EditorRequired] public Pack Pack { get; set; } = default!;
+
+    private MudForm _form = default!;
+
+    private PackPresetDataModel _model = default!;
+
+    protected override void OnParametersSet()
+    {
+        _model = new PackPresetDataModel(Preset.Data);
+    }
+
+    private void OnCardSizeUpdated()
+    {
+        if (!_model.IsFreeCenterEnabled)
+        {
+            _model.FreeCenter = false;
+        }
+
+        _model.Columns.MatchListSize(_model.CardSize, i => new PackPresetColumnModel(i));
+    }
+
+    private string GetTagsSelectText(IList<string> selected)
+    {
+        return GetTagsSelectText(selected.Select(int.Parse));
+    }
+
+    private string GetTagsSelectText(IEnumerable<int> selected)
+    {
+        var selectedList = selected.ToList();
+        var tags = Pack.Tags.Where(x => selectedList.Contains(x.Id)).Select(x => x.Name).ToList();
+        return tags.Count > 0 ? string.Join(", ", tags) : "-";
+    }
+
+    private string? GetTagName(int tagId) => Pack.Tags.FirstOrDefault(x => x.Id == tagId)?.Name;
+    
+    private string GetScoringRuleNames(IEnumerable<PackPresetScoringRules> rules) => string.Join(", ", rules.Select(x => x.GetName()));
+    
+    private void OnColumnConfigUpdated(PackPresetColumnModel col)
+    {
+        if (!_model.SingleColumnConfig || _model.Columns.IndexOf(col) != 0) return;
+        foreach (var pCol in _model.Columns.Skip(1))
+        {
+            pCol.QuestionTags = [..col.QuestionTags];
+            pCol.AnswerTags = [..col.AnswerTags];
+            pCol.ExcludeTags = [..col.ExcludeTags];
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task Save()
+    {
+        await _form.Validate();
+        if (_form.IsValid && OnSave != null)
+        {
+            await OnSave(_model.ToData());
+        }
+    }
+
+    private void CancelEdit()
+    {
+        OnCancelEdit?.Invoke();
+        _model = new PackPresetDataModel(Preset.Data);
+        StateHasChanged();
+    }
+
+}

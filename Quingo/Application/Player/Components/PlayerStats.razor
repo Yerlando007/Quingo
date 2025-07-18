@@ -1,0 +1,87 @@
+﻿@implements IDisposable
+
+<table class="dl-table">
+    <tr>
+        <th>Game State</th>
+        <td>@Game.StateDisplayValue</td>
+    </tr>
+    @if (Game.Preset.LivesNumber > 0 && Game.Preset.EnableCall)
+    {
+        <tr>
+            <th>Lives</th>
+            <td>@Instance.LivesNumber</td>
+        </tr>
+    }
+    @if (Game.WinningPlayers.Count > 0)
+    {
+        <tr>
+            <th>@(Game.WinningPlayers.Count == 1 ? "Winner" : "Winners")</th>
+            <td>@string.Join(", ", Game.WinningPlayers.Select(x => x.PlayerName))</td>
+        </tr>
+    }
+    @if (Game.State is GameStateEnum.Finished or GameStateEnum.Canceled)
+    {
+        <tr>
+            <th>Score</th>
+            <td><PlayerScoreInfo Score="Instance.Score"/></td>
+        </tr>
+    }
+</table>
+
+<MudStack Row Spacing="4" Class="pt-4">
+    @if (Game.ShowTimer)
+    {
+        <GameTimerProgress Timer="Game.Timer" Title="Timer" ColorPercentages="Game.TimerColorPercentages"/>
+    }
+
+    @if (Game.Preset.AutoDrawTimer > 0 && Game.State is GameStateEnum.Init or GameStateEnum.Active or GameStateEnum.Paused)
+    {
+        <GameTimerProgress Timer="Instance.DrawState.AutoDrawTimer" Title="Next"/>
+    }
+</MudStack>
+
+@code {
+    [CascadingParameter] public PlayerInstance Instance { get; set; } = default!;
+
+    private GameInstance Game => Instance.GameInstance;
+
+    private Guid? _gameSessionId;
+
+    private bool _isInitialized;
+
+    protected override void OnInitialized()
+    {
+        InitializeGame();
+        _isInitialized = true;
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (Instance.GameInstance.GameSessionId == _gameSessionId) return;
+
+        _isInitialized = false;
+        InitializeGame();
+        _isInitialized = true;
+    }
+
+    private void InitializeGame()
+    {
+        _gameSessionId = Instance.GameInstance.GameSessionId;
+        Instance.GameInstance.TimerUpdated += OnTimerUpdated;
+        Instance.DrawState.TimerUpdated += OnTimerUpdated;
+        Instance.OnPageConnection(true);
+    }
+
+    private void OnTimerUpdated()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Instance.GameInstance.TimerUpdated -= OnTimerUpdated;
+        Instance.DrawState.TimerUpdated -= OnTimerUpdated;
+        Instance.OnPageConnection(false);
+    }
+
+}

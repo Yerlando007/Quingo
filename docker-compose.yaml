@@ -1,0 +1,34 @@
+services:
+  quingo:
+    container_name: quingo
+    build: .
+    restart: unless-stopped
+    links:
+      - quingo_db
+      - quingo_minio
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__DefaultConnection: "Server=quingo_db;Port=5432;Database=quingo;Username=postgres;Password=12345"
+  quingo_db:
+    container_name: quingo_db
+    image: postgres
+    restart: unless-stopped
+    shm_size: 128mb
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 12345
+      POSTGRES_DB: quingo
+    ports:
+      - 5432:5432
+  quingo_minio:
+    container_name: quingo_minio
+    image: quay.io/minio/minio
+    restart: unless-stopped
+    volumes:
+      - './data/minio:/data'
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
