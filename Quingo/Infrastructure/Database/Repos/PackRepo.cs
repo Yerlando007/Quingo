@@ -16,15 +16,15 @@ public class PackRepo(IDbContextFactory<ApplicationDbContext> dbContextFactory, 
         var cached = cache.Get<Pack>(key);
         if (cached != null) return cached;
         
-        await using var context = await CreateDbContext();
-        var pack = await GetPack(context, packId);
+        var pack = await GetPackByID(packId);
         cache.Set(key, pack);
         
         return pack;
     }
 
-    public async Task<Pack?> GetPack(ApplicationDbContext context, int packId, bool ignoreQueryFilters = false)
+    public async Task<Pack?> GetPackByID(int packId, bool ignoreQueryFilters = false)
     {
+        await using var context = await CreateDbContext();
         var packQ = context.Packs
             .Include(x => x.Tags)
             .Include(x => x.NodeLinkTypes)

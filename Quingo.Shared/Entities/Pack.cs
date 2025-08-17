@@ -10,6 +10,8 @@
 
         public bool IsPublished { get; set; }
 
+        public bool IsTournament { get; set; }
+
         public List<Node> Nodes { get; set; } = [];
 
         public List<NodeLinkType> NodeLinkTypes { get; set; } = [];

@@ -9,6 +9,7 @@
 @inject ILogger<PlayGame> Logger
 @inject IDialogService Dialog
 @inject NavigationManager NavigationManager
+@inject PlayoffService PlayoffService
 
 @attribute [Authorize]
 
@@ -37,6 +38,8 @@ else if (_isInitialized)
     private PlayerInstance _instance = default!;
 
     private bool _isInitialized;
+
+    private IEnumerable<PlayerInstance> DisplayPlayers => _instance.GameInstance.Players;
 
     protected override void OnInitialized()
     {
@@ -96,13 +99,38 @@ else if (_isInitialized)
             }
             else if (state is GameStateEnum.Canceled && _instance.GameInstance.HostUserId != UserId)
             {
-                await Dialog.ShowMessageBox("The game has ended", $"{_instance.GameInstance.HostName} has stopped the game. Thanks for playing!");
+                await ShowEndGameDialogAndNavigateIfTournamentAsync($"{_instance.GameInstance.HostName} has stopped the game. Thanks for playing!");
             }
             else if (state is GameStateEnum.Canceled or GameStateEnum.Finished)
             {
-                await Dialog.ShowMessageBox("The game has ended", "Thanks for playing!");
+                int? lobbyId = _instance.GameInstance.LobbyId;
+
+                if (_instance.GameInstance.IsTournament && _instance.GameInstance.HostUserId == UserId && lobbyId is not null)
+                {
+                    var gameId = _instance.GameInstance.GameSessionId;
+                    var players = _instance.GameInstance.Players;
+                    if (state is GameStateEnum.Finished)
+                        await PlayoffService.SaveTournamentResultAsync(lobbyId.Value, gameId, players);
+                    
+                }
+
+                await ShowEndGameDialogAndNavigateIfTournamentAsync("Thanks for playing!");
             }
         });
+    }
+
+    private async Task ShowEndGameDialogAndNavigateIfTournamentAsync(string message)
+    {
+        var result = await Dialog.ShowMessageBox("The game has ended", message);
+
+        if (_instance.GameInstance.IsTournament && result == true)
+        {
+            int? lobbyId = _instance.GameInstance.LobbyId;
+            if (lobbyId is not null)
+            {
+                NavigationManager.NavigateTo($"/game/tournament/lobby/{lobbyId}");
+            }
+        }
     }
 
     private void OnNewGameCreated(GameInstance game, PlayerInstance player)

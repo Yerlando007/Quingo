@@ -10,6 +10,7 @@
 @inject ISnackbar Snackbar
 @inject NavigationManager NavigationManager
 @inject FileStoreService Files
+@inject TournamentLobbyService LobbyService
 
 @attribute [Authorize]
 
@@ -142,6 +143,12 @@
         try
         {
             ArgumentNullException.ThrowIfNull(_pack, nameof(_pack));
+            if (_pack.IsTournament)
+            {
+                var lobby = await LobbyService.CreateLobby(_pack.Id, _pack.Name, UserId, _userName ?? "Unknown", _gameOptions.Password);
+                NavigationManager.NavigateTo($"/game/tournament/lobby/{lobby.Id}");
+                return;
+            }
             ArgumentNullException.ThrowIfNull(UserId, nameof(UserId));
             ArgumentNullException.ThrowIfNull(_preset, nameof(_preset));
 
