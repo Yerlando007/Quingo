@@ -1,5 +1,6 @@
 ﻿@implements IDisposable
 @inject ISnackbar Snackbar
+@inject PlayoffService PlayoffService
 
 <MudText Typo="Typo.h5" GutterBottom>Players (@DisplayPlayerCount)</MudText>
 @if (ShowPlayers && DisplayPlayers.Any())
@@ -96,7 +97,7 @@ else
                                 </MudButton>
                             }
                         </MudTd>
-                    }
+                        }
                 </RowTemplate>
             </MudTable>
         </MudItem>
@@ -253,5 +254,4 @@ else
             player.LifeLost -= OnLifeLost;
         }
     }
-
 }

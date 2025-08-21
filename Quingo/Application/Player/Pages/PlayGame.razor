@@ -10,6 +10,7 @@
 @inject IDialogService Dialog
 @inject NavigationManager NavigationManager
 @inject PlayoffService PlayoffService
+@using Quingo.Shared.Constants
 
 @attribute [Authorize]
 
@@ -99,38 +100,26 @@ else if (_isInitialized)
             }
             else if (state is GameStateEnum.Canceled && _instance.GameInstance.HostUserId != UserId)
             {
-                await ShowEndGameDialogAndNavigateIfTournamentAsync($"{_instance.GameInstance.HostName} has stopped the game. Thanks for playing!");
+                await Dialog.ShowMessageBox("The game has ended", $"{_instance.GameInstance.HostName} has stopped the game. Thanks for playing!");      
             }
             else if (state is GameStateEnum.Canceled or GameStateEnum.Finished)
             {
                 int? lobbyId = _instance.GameInstance.LobbyId;
 
-                if (_instance.GameInstance.IsTournament && _instance.GameInstance.HostUserId == UserId && lobbyId is not null)
+                if (_instance.GameInstance.IsTournament && lobbyId is not null)
                 {
-                    var gameId = _instance.GameInstance.GameSessionId;
-                    var players = _instance.GameInstance.Players;
-                    if (state is GameStateEnum.Finished)
-                        await PlayoffService.SaveTournamentResultAsync(lobbyId.Value, gameId, players);
-                    
+                    if (_instance.GameInstance.HostUserId == UserId)
+                    {
+                        var gameId = _instance.GameInstance.GameSessionId;
+                        var players = _instance.GameInstance.Players;
+                        if (state is GameStateEnum.Finished)
+                            await PlayoffService.SaveTournamentResultAsync(lobbyId.Value, gameId, players);
+                    }
                 }
 
-                await ShowEndGameDialogAndNavigateIfTournamentAsync("Thanks for playing!");
+                await Dialog.ShowMessageBox("The game has ended", "Thanks for playing!");
             }
         });
-    }
-
-    private async Task ShowEndGameDialogAndNavigateIfTournamentAsync(string message)
-    {
-        var result = await Dialog.ShowMessageBox("The game has ended", message);
-
-        if (_instance.GameInstance.IsTournament && result == true)
-        {
-            int? lobbyId = _instance.GameInstance.LobbyId;
-            if (lobbyId is not null)
-            {
-                NavigationManager.NavigateTo($"/game/tournament/lobby/{lobbyId}");
-            }
-        }
     }
 
     private void OnNewGameCreated(GameInstance game, PlayerInstance player)
@@ -149,5 +138,4 @@ else if (_isInitialized)
         _instance.GameInstance.GameStateChanged -= OnGameInstanceChanged;
         _instance.NewGameCreated -= OnNewGameCreated;
     }
-
 }

@@ -4,6 +4,7 @@
 @using System.Security.Claims
 @using Quingo.Shared
 @using Quingo.Shared.Entities
+@using System.Text.Json
 
 @inject GameService GameService
 @inject NavigationManager NavigationManager
@@ -40,7 +41,7 @@
         <MudTd>@(context.IsTournament? context.Tournament!.HostUserName : context.Game!.HostName)</MudTd>
         <MudTd>
             @(context.IsTournament
-                        ? $"{context.Tournament!.Participants.Count}/{context.Tournament!.MaxPlayers}"
+                        ? $"{context.Tournament!.Participants.Count}/{GetMaxPlayersFromJson(context.Tournament!.PresetJson)}"
                         : PlayersFormat(context.Game!))
         </MudTd>
         <MudTd>
@@ -141,8 +142,9 @@
     {
         if (_userId is null) return false;
 
+        var presetData = JsonSerializer.Deserialize<PackPresetData>(tournament.PresetJson);
         bool isAlreadyParticipant = tournament.Participants.Any(p => p.UserId == _userId);
-        bool hasFreeSlots = tournament.Participants.Count < tournament.MaxPlayers;
+        bool hasFreeSlots = tournament.Participants.Count < presetData.MaxPlayers;
 
         return isAlreadyParticipant || hasFreeSlots;
     }
@@ -214,6 +216,22 @@
             }
 
             Snackbar.Add(e.Message, Severity.Error);
+        }
+    }
+
+    private int GetMaxPlayersFromJson(string? presetJson)
+    {
+        if (string.IsNullOrWhiteSpace(presetJson))
+            return 0;
+
+        try
+        {
+            var preset = JsonSerializer.Deserialize<PackPresetData>(presetJson);
+            return preset?.MaxPlayers ?? 0;
+        }
+        catch
+        {
+            return 0;
         }
     }
 }

@@ -1,4 +1,5 @@
-﻿using Quingo.Shared.Entities;
+﻿using Quingo.Shared.Constants;
+using Quingo.Shared.Entities;
 
 public class TournamentLobby : EntityBase
 {
@@ -7,6 +8,7 @@ public class TournamentLobby : EntityBase
     public int PackId { get; set; }
     public string PackName { get; set; } = default!;
     public string? Password { get; set; }
-    public int MaxPlayers { get; set; } = 4;
+    public string? PresetJson { get; set; }
+    public TournamentMode TournamentMode { get; set; } = TournamentMode.None;
     public ICollection<LobbyParticipant> Participants { get; set; } = new List<LobbyParticipant>();
 }

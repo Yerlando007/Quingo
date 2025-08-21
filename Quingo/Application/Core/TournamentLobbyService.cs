@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using Quingo.Application.SignalR;
 using Quingo.Infrastructure.Database;
 using Quingo.Shared.Constants;
+using Quingo.Shared.Entities;
+using System.Text.Json;
 
 namespace Quingo.Application.Core;
 
@@ -17,7 +19,7 @@ public class TournamentLobbyService
         _hubContext = hubContext;
     }
 
-    public async Task<TournamentLobby> CreateLobby(int packId, string packName, string hostId, string hostName, string? password)
+    public async Task<TournamentLobby> CreateLobby(int packId, string packName, string hostId, string hostName, string? password, PackPresetData presetData, TournamentMode tournamentMode)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
 
@@ -28,7 +30,8 @@ public class TournamentLobbyService
             PackId = packId,
             PackName = packName,
             Password = password,
-            MaxPlayers = 4,
+            PresetJson = JsonSerializer.Serialize(presetData),
+            TournamentMode = tournamentMode,
             Participants = new List<LobbyParticipant>
             {
                 new LobbyParticipant
@@ -60,6 +63,28 @@ public class TournamentLobbyService
         return await db.TournamentLobbies
             .Include(x => x.Participants)
             .FirstOrDefaultAsync(x => x.Id == lobbyId);
+    }
+
+    public async Task<bool> CanJoinLobbyAsync(int lobbyId, string userId)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var lobby = await db.TournamentLobbies
+            .Include(x => x.Participants)
+            .FirstOrDefaultAsync(x => x.Id == lobbyId);
+
+        if (lobby == null)
+            return false;
+
+        var presetData = JsonSerializer.Deserialize<PackPresetData>(lobby.PresetJson);
+
+        if (lobby.Participants.Any(p => p.UserId == userId))
+            return true;
+
+        if (lobby.Participants.Count >= presetData.MaxPlayers)
+            return false;
+
+        return true;
     }
 
     public async Task JoinLobby(int lobbyId, string userId, string userName)
@@ -168,13 +193,13 @@ public class TournamentLobbyService
             .SendAsync(SignalRConstants.LobbyClosed);
     }
 
-    public async Task UpdateMaxPlayers(int lobbyId, int maxPlayers)
+    public async Task UpdatePresetData(int lobbyId, PackPresetData data)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         var lobby = await db.TournamentLobbies.FindAsync(lobbyId);
         if (lobby == null) throw new Exception("Lobby not found");
 
-        lobby.MaxPlayers = maxPlayers;
+        lobby.PresetJson = JsonSerializer.Serialize(data);
         await db.SaveChangesAsync();
 
         await _hubContext.Clients.Group(SignalRConstants.LobbyGroup(lobbyId))

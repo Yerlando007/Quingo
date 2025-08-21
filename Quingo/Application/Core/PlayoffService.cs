@@ -127,8 +127,21 @@ public class PlayoffService
         var currentGame = allGames.DefaultIfEmpty(0).Max();
 
         var existingResults = await db.TournamentResults
-            .Where(r => r.LobbyId == lobbyId && r.Game == currentGame && r.Result == null)
+            .Where(r => r.LobbyId == lobbyId && r.Game == currentGame)
             .ToListAsync();
+
+        foreach (var player in orderedPlayers)
+        {
+            var result = existingResults.FirstOrDefault(r => r.UserId == player.PlayerUserId);
+            if (result != null)
+            {
+                result.Score = player.Score.ScoreTotal;
+                result.CellScore = player.Score.ScoreCells;
+                result.ErrorPenalty = player.Score.ScoreErrorPenalties;
+                result.DrawHistory = player.DrawState?.DrawnNodes?.Count ?? 0;
+                result.Result = null;
+            }
+        }
 
         for (int i = 0; i < orderedPlayers.Count; i += 2)
         {
@@ -142,32 +155,17 @@ public class PlayoffService
 
             if (r1 == null || r2 == null) continue;
 
-            r1.Score = p1.Score.ScoreTotal;
-            r2.Score = p2.Score.ScoreTotal;
-
-            if (r1.Score > r2.Score)
-            {
-                r1.Result = GameResult.Win;
-                r2.Result = GameResult.Loss;
-            }
-            else if (r1.Score < r2.Score)
-            {
-                r1.Result = GameResult.Loss;
-                r2.Result = GameResult.Win;
-            }
-            else
-            {
-                r1.Result = GameResult.Draw;
-                r2.Result = GameResult.Draw;
-            }
+            DetermineWinner(r1, r2);
         }
 
         foreach (var participant in lobby.Participants)
-        {
             participant.IsReady = false;
-        }
 
         await db.SaveChangesAsync();
+
+        await _hubContext.Clients
+            .Group($"lobby-{lobbyId}")
+            .SendAsync("TournamentUpdated");
     }
 
     public async Task<Dictionary<int, List<TournamentResult>>> GetTournamentHistoryAsync(int lobbyId)
@@ -201,6 +199,25 @@ public class PlayoffService
             .ToListAsync();
     }
 
+    public async Task<List<TournamentResult>> GetDrawPlayersOfLastRoundAsync(int lobbyId)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var gameNumbers = await db.TournamentResults
+            .Where(r => r.LobbyId == lobbyId && r.Result != null)
+            .Select(r => r.Game)
+            .ToListAsync();
+
+        var maxGame = gameNumbers.DefaultIfEmpty(0).Max();
+
+        if (maxGame == 0)
+            return new List<TournamentResult>();
+
+        return await db.TournamentResults
+            .Where(r => r.LobbyId == lobbyId && r.Game == maxGame && r.Result == GameResult.Draw)
+            .ToListAsync();
+    }
+
     public async Task<Dictionary<string, int>> GetLatestScoresAsync(int lobbyId)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
@@ -214,5 +231,31 @@ public class PlayoffService
                 LatestScore = g.OrderByDescending(r => r.Id).First().Score
             })
             .ToDictionaryAsync(x => x.UserId, x => x.LatestScore);
+    }
+
+    private void DetermineWinner(TournamentResult r1, TournamentResult r2)
+    {
+        var comparisons = new List<(int v1, int v2, Action win1, Action win2)>
+    {
+        (r1.Score,        r2.Score,        () => SetWin(r1, r2), () => SetWin(r2, r1)),
+        (r1.CellScore,    r2.CellScore,    () => SetWin(r1, r2), () => SetWin(r2, r1)),
+        (r2.ErrorPenalty, r1.ErrorPenalty, () => SetWin(r1, r2), () => SetWin(r2, r1)),
+        (r2.DrawHistory,  r1.DrawHistory,  () => SetWin(r1, r2), () => SetWin(r2, r1))
+    };
+
+        foreach (var (v1, v2, win1, win2) in comparisons)
+        {
+            if (v1 > v2) { win1(); return; }
+            if (v1 < v2) { win2(); return; }
+        }
+
+        r1.Result = GameResult.Draw;
+        r2.Result = GameResult.Draw;
+    }
+
+    private void SetWin(TournamentResult winner, TournamentResult loser)
+    {
+        winner.Result = GameResult.Win;
+        loser.Result = GameResult.Loss;
     }
 }

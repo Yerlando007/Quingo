@@ -20,4 +20,10 @@ public class LobbyHub : Hub
         var groupName = SignalRConstants.LobbyGroup(lobbyId);
         await Clients.Group(groupName).SendAsync("GameStarted", gameSessionId, password);
     }
+
+    public async Task NotifyTournamentUpdated(int lobbyId)
+    {
+        var groupName = SignalRConstants.LobbyGroup(lobbyId);
+        await Clients.Group(groupName).SendAsync("TournamentUpdated");
+    }
 }
