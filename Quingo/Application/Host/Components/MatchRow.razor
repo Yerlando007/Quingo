@@ -75,8 +75,16 @@
 
     private static Color GetWinnerColor(TournamentResult a, TournamentResult b)
     {
-        return ComparePlayers(a, b) > 0 ? Color.Success : Color.Default;
+        var result = ComparePlayers(a, b);
+
+        return result switch
+        {
+            > 0 => Color.Success,
+            < 0 => Color.Error,
+            0 => Color.Default,
+        };
     }
+
 
     private static Color PositiveColor(int v) => v > 0 ? Color.Success : Color.Default;
     private static Color PenaltyColor(int v) => v > 0 ? Color.Error : Color.Default;

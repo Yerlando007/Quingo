@@ -114,6 +114,15 @@ else
                        OnClick="OnStartGame">
                 Начать игру
             </MudButton>
+            <MudTooltip Text="Ожидаем нужное количество участников" Disabled="EnoughPlayers">
+                <MudButton Color="Color.Warning"
+                           Class="mt-2 mb-2"
+                           Disabled="@(!EnoughPlayers)"
+                           OnClick="OnStartGame">
+                    Принудительно начать игру
+                </MudButton>
+            </MudTooltip>
+
         }
         else
         {
@@ -393,6 +402,15 @@ else
                 return false;
 
             return relevantParticipants.All(p => p.IsReady);
+        }
+    }
+
+    private bool EnoughPlayers
+    {
+        get
+        {
+            return _lobby is not null &&
+                   _lobby.Participants.Count == _preset.Data.MaxPlayers;
         }
     }
 
